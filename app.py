@@ -167,8 +167,8 @@ def generate_response_with_visualization(model, tokenizer, device, messages, gen
     # Track the current state of x for visualization
     current_x = x.clone()
 
-    # Process each block
-    for num_block in range(num_blocks):
+    # Process each block from right to left (starting from the last block)
+    for num_block in range(num_blocks - 1, -1, -1):
         # Calculate the start and end indices for the current block
         block_start = prompt_length + num_block * block_length
         block_end = min(prompt_length + (num_block + 1) * block_length, x.shape[1])

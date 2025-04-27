@@ -66,21 +66,14 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
     assert steps % num_blocks == 0
     steps = steps // num_blocks
 
-    for num_block in range(num_blocks):
-        block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length:] == mask_id)
+    for num_block in range(num_blocks-1, -1, -1):
+        block_mask_index = (x[:, prompt.shape[1] + num_block * block_length: prompt.shape[1] + (num_block + 1) * block_length] == mask_id)
         num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
         for i in range(steps):
             mask_index = (x == mask_id)
             if cfg_scale > 0.:
                 un_x = x.clone()
-                prompt_tokens = tokenizer.convert_ids_to_tokens(
-                    un_x[0,].tolist()
-                )
-                numeric_mask = [
-                    (tok.lstrip('▁').isdigit()) for tok in prompt_tokens
-                ]
-                numeric_mask = torch.tensor(numeric_mask, device=un_x.device)
-                un_x[numeric_mask[None]] = mask_id
+                un_x[prompt_index] = mask_id
                 x_ = torch.cat([x, un_x], dim=0)
                 logits = model(x_).logits
                 logits, un_logits = torch.chunk(logits, 2, dim=0)
@@ -100,11 +93,10 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
             else:
                 raise NotImplementedError(remasking)
 
-            x0_p[:, prompt.shape[1] + (num_block + 1) * block_length:] = -np.inf
+            x0_p[:, prompt.shape[1] : prompt.shape[1] + num_block * block_length] = -np.inf
 
             x0 = torch.where(mask_index, x0, x)
             confidence = torch.where(mask_index, x0_p, -np.inf)
-
             transfer_index = torch.zeros_like(x0, dtype=torch.bool, device=x0.device)
             for j in range(confidence.shape[0]):
                 _, select_index = torch.topk(confidence[j], k=num_transfer_tokens[j, i])

@@ -16,3 +16,12 @@ accelerate launch eval_llada.py --tasks mmlu --num_fewshot 5 --model llada_dist 
 accelerate launch eval_llada.py --tasks cmmlu --num_fewshot 5 --model llada_dist --batch_size 1 --model_args model_path='GSAI-ML/LLaDA-8B-Base',cfg=0.0,is_check_greedy=False,mc_num=1
 
 accelerate launch eval_llada.py --tasks ceval-valid --num_fewshot 5 --model llada_dist --batch_size 1 --model_args model_path='GSAI-ML/LLaDA-8B-Base',cfg=0.0,is_check_greedy=False,mc_num=1
+
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HOME=/lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/huggingface
+accelerate launch -m lm_eval --model hf \
+    --model_args pretrained=GSAI-ML/LLaDA-8B-Instruct,trust_remote_code=True \
+    --tasks gsm8k \
+    --batch_size 32 \
+    --log_samples \
+    --output_path /lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/evaluation/
