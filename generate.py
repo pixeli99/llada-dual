@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn.functional as F
 
 from transformers import AutoTokenizer, AutoModel
+from datasets import load_dataset
 
 
 def add_gumbel_noise(logits, temperature):
@@ -71,21 +72,42 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
         num_transfer_tokens = get_num_transfer_tokens(block_mask_index, steps)
         for i in range(steps):
             mask_index = (x == mask_id)
+            # ---------- conditional & local‑uncond CFG ---------- #
             if cfg_scale > 0.:
-                un_x = x.clone()
-                prompt_tokens = tokenizer.convert_ids_to_tokens(
-                    un_x[0,].tolist()
+                # (1) forward on current sequence to obtain conditional logits
+                cond_logits = model(x).logits  # (1, L, |V|)
+
+                # (2) estimate token‑level confidence from conditional logits
+                p_cond = F.softmax(cond_logits.to(torch.float64), dim=-1)
+                x0_cond = torch.argmax(cond_logits, dim=-1)
+                x0_p_cond = torch.squeeze(
+                    torch.gather(p_cond, dim=-1, index=torch.unsqueeze(x0_cond, -1)), -1
                 )
-                numeric_mask = [
-                    (tok.lstrip('▁').isdigit()) for tok in prompt_tokens
-                ]
-                numeric_mask = torch.tensor(numeric_mask, device=un_x.device)
-                un_x[numeric_mask[None]] = mask_id
-                x_ = torch.cat([x, un_x], dim=0)
-                logits = model(x_).logits
-                logits, un_logits = torch.chunk(logits, 2, dim=0)
-                logits = un_logits + (cfg_scale + 1) * (logits - un_logits)
+
+                # (3) pick the low‑confidence tokens for this step
+                uncond_mask = torch.zeros_like(x0_cond, dtype=torch.bool)
+                for j in range(x0_cond.shape[0]):
+                    # lowest‑confidence → largest=False
+                    _, sel = torch.topk(
+                        x0_p_cond[j],
+                        k=num_transfer_tokens[j, i],
+                        largest=False
+                    )
+                    uncond_mask[j, sel] = True
+
+                # (4) build the local 'uncond' input by masking only these positions
+                un_x = x.clone()
+                un_x[uncond_mask] = mask_id
+
+                # (5) joint forward pass for conditional & un‑conditional sequences
+                x_cat = torch.cat([x, un_x], dim=0)  # (2, L)
+                all_logits = model(x_cat).logits
+                cond_logits, un_logits = torch.chunk(all_logits, 2, dim=0)
+
+                # (6) classifier‑free guidance
+                logits = un_logits + (cfg_scale + 1) * (cond_logits - un_logits)
             else:
+                # No CFG ‑‑ single forward pass
                 logits = model(x).logits
 
             logits_with_noise = add_gumbel_noise(logits, temperature=temperature)
@@ -117,8 +139,8 @@ def generate(model, prompt, steps=128, gen_length=128, block_length=128, tempera
 def main():
     device = 'cuda'
 
-    model = AutoModel.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
-    tokenizer = AutoTokenizer.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True)
+    model = AutoModel.from_pretrained('/lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/huggingface/hub/models--GSAI-ML--LLaDA-8B-Instruct/snapshots/9275bf8f5a5687507189baf4657e91c51b2be338', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained('/lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/huggingface/hub/models--GSAI-ML--LLaDA-8B-Instruct/snapshots/9275bf8f5a5687507189baf4657e91c51b2be338', trust_remote_code=True)
 
     prompt = "Lily can run 12 kilometers per hour for 4 hours. After that, she runs 6 kilometers per hour. How many kilometers can she run in 8 hours?"
 

@@ -6,8 +6,8 @@ from transformers import AutoTokenizer, AutoModel
 
 def chat():
     device = 'cuda'
-    model = AutoModel.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
-    tokenizer = AutoTokenizer.from_pretrained('GSAI-ML/LLaDA-8B-Instruct', trust_remote_code=True)
+    model = AutoModel.from_pretrained('/lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/huggingface/hub/models--GSAI-ML--LLaDA-8B-Instruct/snapshots/9275bf8f5a5687507189baf4657e91c51b2be338', trust_remote_code=True, torch_dtype=torch.bfloat16).to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained('/lpai/volumes/ad-vla-vol-ga/lipengxiang/code/LLaDA/huggingface/hub/models--GSAI-ML--LLaDA-8B-Instruct/snapshots/9275bf8f5a5687507189baf4657e91c51b2be338', trust_remote_code=True)
 
     gen_length = 256
     steps = 256
@@ -29,7 +29,7 @@ def chat():
         else:
             prompt = torch.cat([prompt, input_ids[:, 1:]], dim=1)
 
-        out = generate(model, prompt, steps=steps, gen_length=gen_length, block_length=4, temperature=0., cfg_scale=1.5, remasking='low_confidence', tokenizer=tokenizer)
+        out = generate(model, prompt, steps=steps, gen_length=gen_length, block_length=64, temperature=0., cfg_scale=0.0, remasking='low_confidence', tokenizer=tokenizer)
 
         answer = tokenizer.batch_decode(out[:, prompt.shape[1]:], skip_special_tokens=True)[0]
         print(f"Bot's reply: {answer}")
